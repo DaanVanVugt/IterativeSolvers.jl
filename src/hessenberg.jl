@@ -1,4 +1,3 @@
-import LinearAlgebra: Givens, givensAlgorithm
 import LinearAlgebra.ldiv!
 
 struct FastHessenberg{T<:AbstractMatrix}
@@ -44,3 +43,80 @@ function ldiv!(H::FastHessenberg, rhs)
     ldiv!(U, view(rhs, 1 : width))
     nothing
 end
+
+# derived from LAPACK's dlartg
+# Copyright:
+# Univ. of Tennessee
+# Univ. of California Berkeley
+# Univ. of Colorado Denver
+# NAG Ltd.
+function givensAlgorithm(f::T, g::T) where T
+    onepar = one(T)
+    twopar = 2one(T)
+    T0 = typeof(onepar) # dimensionless
+    zeropar = T0(zero(T)) # must be dimensionless
+
+    # need both dimensionful and dimensionless versions of these:
+    safmn2 = floatmin2(T0)
+    safmn2u = floatmin2(T)
+    safmx2 = one(T)/safmn2
+    safmx2u = oneunit(T)/safmn2
+
+    if g == 0
+        cs = onepar
+        sn = zeropar
+        r = f
+    elseif f == 0
+        cs = zeropar
+        sn = onepar
+        r = g
+    else
+        f1 = f
+        g1 = g
+        scalepar = max(abs(f1), abs(g1))
+        if scalepar >= safmx2u
+            count = 0
+            while true
+                count += 1
+                f1 *= safmn2
+                g1 *= safmn2
+                scalepar = max(abs(f1), abs(g1))
+                if scalepar < safmx2u break end
+            end
+            r = sqrt(f1*f1 + g1*g1)
+            cs = f1/r
+            sn = g1/r
+            for i = 1:count
+                r *= safmx2
+            end
+        elseif scalepar <= safmn2u
+            count = 0
+            while true
+                count += 1
+                f1 *= safmx2
+                g1 *= safmx2
+                scalepar = max(abs(f1), abs(g1))
+                if scalepar > safmn2u break end
+            end
+            r = sqrt(f1*f1 + g1*g1)
+            cs = f1/r
+            sn = g1/r
+            for i = 1:count
+                r *= safmn2
+            end
+        else
+            r = sqrt(f1*f1 + g1*g1)
+            cs = f1/r
+            sn = g1/r
+        end
+        if abs(f) > abs(g) && cs < 0
+            cs = -cs
+            sn = -sn
+            r = -r
+        end
+    end
+    return cs, sn, r
+end
+
+floatmin2(::Type{Float64}) = reinterpret(Float64, 0x21a0000000000000)
+floatmin2(::Any) = reinterpret(Float64, 0x21a0000000000000)
